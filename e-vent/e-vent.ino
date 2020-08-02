@@ -40,7 +40,8 @@
 #include "Input.h"
 #include "Logging.h"
 #include "Pressure.h"
-
+#include "AutoPID.h"
+#include <arduino-timer.h>
 
 using namespace input;
 using namespace utils;
@@ -49,7 +50,7 @@ using namespace utils;
 /////////////////////
 // Initialize Vars //
 /////////////////////
-
+auto timer = timer_create_default();
 // Cycle parameters
 unsigned long cycleCount = 0;
 float tCycleTimer;     // Absolute time (s) at start of each breathing cycle
@@ -66,6 +67,13 @@ States state;
 bool enteringState;
 float tStateTimer;
 
+//Motor
+double Setpoint1, Input1, Output1;
+int forWARDS  = 1; 
+int backWARDS = 0;
+int PWM1 = 2;
+int ant, act;
+volatile long contador;
 // Roboclaw
 RoboClaw roboclaw(&Serial3, 10000);
 int motorCurrent, motorPosition = 0;
@@ -125,7 +133,7 @@ void setupLogger();
 ///////////////////
 ////// Setup //////
 ///////////////////
-
+AutoPID myPID(&Input1, &Setpoint1, &Output1, OUTPUT_MIN_PID, OUTPUT_MAX_PID, KP, KI, KD, RANGE);
 void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
   while(!Serial);
@@ -148,14 +156,59 @@ void setup() {
   confirmButton.begin();
   knobs.begin();
   tCycleTimer = now();
-
+  timer.every(SAMPLE_TIME, pid_interupt);
   roboclaw.begin(ROBOCLAW_BAUD);
   roboclaw.SetM1MaxCurrent(ROBOCLAW_ADDR, ROBOCLAW_MAX_CURRENT);
   roboclaw.SetM1VelocityPID(ROBOCLAW_ADDR, VKP, VKI, VKD, QPPS);
   roboclaw.SetM1PositionPID(ROBOCLAW_ADDR, PKP, PKI, PKD, KI_MAX, DEADZONE, MIN_POS, MAX_POS);
+  Setpoint1 = 4000;
   roboclaw.SetEncM1(ROBOCLAW_ADDR, 0);  // Zero the encoder
 }
 
+bool pid_interupt(void *) {
+  myPID.run();  // Calculus for PID algorithm 
+  RunMotor(Output1); // PWM order to DC driver
+  return true; // repeat? true
+}
+
+
+void RunMotor(double Usignal){  
+  if (Setpoint1-Input1==0){
+    shaftrev(ENC1,ENC2,PWM1,backWARDS, 0);
+    //Serial.print("cero");
+  }else if(Usignal>=0){
+    shaftrev(ENC1,ENC2,PWM1,backWARDS, Usignal);
+  }else{
+      shaftrev(ENC1,ENC2,PWM1,forWARDS, -1*Usignal);
+  }   
+}
+
+void shaftrev(int encoder1, int encoder2, int PWM, int sentido, int Wpulse){  
+  if(sentido == 0){ //backWARDS
+    digitalWrite(MOT1, HIGH);
+    digitalWrite(MOT2, LOW);
+    analogWrite(PWM,Wpulse);
+  }
+  if(sentido == 1){ //forWARDS
+    digitalWrite(MOT1, LOW);
+    digitalWrite(MOT2, HIGH);
+    analogWrite(PWM,Wpulse);     
+  }
+}
+
+void encoder(void){ 
+  //Serial.println(ant);
+  ant=act;                            // Saved act (current read) in ant (last read)
+  act = digitalRead(ENC1)<<1|digitalRead(ENC2);
+  if(ant==0 && act==1)        contador++;  // Increase the counter for forward movement
+  else if(ant==1  && act==3)  contador++;
+  else if(ant==3  && act==2)  contador++;
+  else if(ant==2  && act==0)  contador++;
+  else contador--;                         // Reduce the counter for backward movement
+
+  // Enter the counter as input for PID algorith
+  Input1=contador;
+}
 //////////////////
 ////// Loop //////
 //////////////////

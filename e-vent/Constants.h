@@ -84,6 +84,14 @@ const int dLCD_D5_PIN = 6;
 const int LCD_D6_PIN = 5;
 const int LCD_D7_PIN = 4;
 
+const int ENC1 = 18;
+const int ENC2 = 19;
+const int MOT1 = 30;
+const int MOT2 = 31;
+const int SAMPLE_TIME = 10;
+const int OUTPUT_MIN_PID = 0;
+const int OUTPUT_MAX_PID = 255;
+
 // Control knob mappings
 const int BPM_MIN = 10;
 const int BPM_MAX = 35;
@@ -131,5 +139,14 @@ const unsigned long ACC_MAX = 200000;   // Maximum acceleration (clicks/s^2) to 
 const unsigned int ROBOCLAW_ADDR = 0x80;
 const long ROBOCLAW_BAUD = 38400;
 const unsigned long ROBOCLAW_MAX_CURRENT = 2000;    //Safety shutoff in units of 10mA
+
+// PID Motor
+const float KP = 70.0;
+const float KI = 0.2;
+const float KD = 200.0;
+const int RANGE = 0;
+const int OUTPUT_MIN = -100;
+const int OUTPUT_MAX = 200;
+
 
 #endif
