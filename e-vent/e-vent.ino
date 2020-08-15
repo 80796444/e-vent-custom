@@ -23,16 +23,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-/*comentario 1 Ana Maria*/
+
 /**
  * e-vent.ino
  * Main Arduino file.
  */
 
 #include "LiquidCrystal.h"
-#include "src/thirdparty/RoboClaw/RoboClaw.h"
+//#include "src/thirdparty/RoboClaw/RoboClaw.h"
 #include "cpp_utils.h"  // Redefines macros min, max, abs, etc. into proper functions,
-                        // should be included after third-party code, before E-Vent includes
+#include <arduino-timer.h>                        // should be included after third-party code, before E-Vent includes
+
 #include "Alarms.h"
 #include "Buttons.h"
 #include "Constants.h"
@@ -41,7 +42,6 @@
 #include "Logging.h"
 #include "Pressure.h"
 #include "AutoPID.h"
-#include <arduino-timer.h>
 
 using namespace input;
 using namespace utils;
@@ -50,7 +50,7 @@ using namespace utils;
 /////////////////////
 // Initialize Vars //
 /////////////////////
-auto timer = timer_create_default();
+
 // Cycle parameters
 unsigned long cycleCount = 0;
 float tCycleTimer;     // Absolute time (s) at start of each breathing cycle
@@ -67,16 +67,30 @@ States state;
 bool enteringState;
 float tStateTimer;
 
-//Motor
-double Setpoint1, Input1, Output1;
-int forWARDS  = 1; 
-int backWARDS = 0;
-int PWM1 = 2;
-int ant, act;
-volatile long contador;
 // Roboclaw
-RoboClaw roboclaw(&Serial3, 10000);
-int motorCurrent, motorPosition = 0;
+//RoboClaw roboclaw(&Serial3, 10000);
+//int motorCurrent, 
+int motorPosition = 0;
+#define SAMPLE_TIME 10
+#define OUTPUT_MIN -150
+#define OUTPUT_MAX 150
+#define RANGE 5
+bool test;
+double Setpoint; 
+double Input1;
+double Output;
+int counterlog;
+volatile long contador =  0; 
+auto timer = timer_create_default();
+byte         cmd       =  0;             // Use for serial comunication.  
+byte         flags; 
+double percentageError = 0; 
+double Kp=2, Ki=0.1, Kd=0.01;  
+byte  ant =  0;    
+byte  act =  0;
+
+AutoPID myPID(&Input1, &Setpoint, &Output, OUTPUT_MIN, OUTPUT_MAX, Kp, Ki, Kd, RANGE, &percentageError);
+
 
 // LCD Screen
 LiquidCrystal lcd(LCD_RS_PIN, LCD_EN_PIN, LCD_D4_PIN, dLCD_D5_PIN, LCD_D6_PIN, LCD_D7_PIN);
@@ -129,11 +143,10 @@ void handleErrors();
 // Set up logger variables
 void setupLogger();
 
-
 ///////////////////
 ////// Setup //////
 ///////////////////
-AutoPID myPID(&Input1, &Setpoint1, &Output1, OUTPUT_MIN_PID, OUTPUT_MAX_PID, KP, KI, KD, RANGE);
+
 void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
   while(!Serial);
@@ -156,66 +169,32 @@ void setup() {
   confirmButton.begin();
   knobs.begin();
   tCycleTimer = now();
+
+//  roboclaw.begin(ROBOCLAW_BAUD);
+//  roboclaw.SetM1MaxCurrent(ROBOCLAW_ADDR, ROBOCLAW_MAX_CURRENT);
+//  roboclaw.SetM1VelocityPID(ROBOCLAW_ADDR, VKP, VKI, VKD, QPPS);
+//  roboclaw.SetM1PositionPID(ROBOCLAW_ADDR, PKP, PKI, PKD, KI_MAX, DEADZONE, MIN_POS, MAX_POS);
+//  roboclaw.SetEncM1(ROBOCLAW_ADDR, 0);  // Zero the encoder
+
+  Setpoint = 9000;
+  myPID.setBangBang(0);
+  myPID.setTimeStep(SAMPLE_TIME);
+  pinMode(LED_BUILTIN, OUTPUT);
+  attachInterrupt(digitalPinToInterrupt(ENC1), encoder, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENC2), encoder, CHANGE);
+  int counterlog = 0;
   timer.every(SAMPLE_TIME, pid_interupt);
-  roboclaw.begin(ROBOCLAW_BAUD);
-  roboclaw.SetM1MaxCurrent(ROBOCLAW_ADDR, ROBOCLAW_MAX_CURRENT);
-  roboclaw.SetM1VelocityPID(ROBOCLAW_ADDR, VKP, VKI, VKD, QPPS);
-  roboclaw.SetM1PositionPID(ROBOCLAW_ADDR, PKP, PKI, PKD, KI_MAX, DEADZONE, MIN_POS, MAX_POS);
-  Setpoint1 = 4000;
-  roboclaw.SetEncM1(ROBOCLAW_ADDR, 0);  // Zero the encoder
 }
 
-bool pid_interupt(void *) {
-  myPID.run();  // Calculus for PID algorithm 
-  RunMotor(Output1); // PWM order to DC driver
-  return true; // repeat? true
-}
-
-
-void RunMotor(double Usignal){  
-  if (Setpoint1-Input1==0){
-    shaftrev(ENC1,ENC2,PWM1,backWARDS, 0);
-    //Serial.print("cero");
-  }else if(Usignal>=0){
-    shaftrev(ENC1,ENC2,PWM1,backWARDS, Usignal);
-  }else{
-      shaftrev(ENC1,ENC2,PWM1,forWARDS, -1*Usignal);
-  }   
-}
-
-void shaftrev(int encoder1, int encoder2, int PWM, int sentido, int Wpulse){  
-  if(sentido == 0){ //backWARDS
-    digitalWrite(MOT1, HIGH);
-    digitalWrite(MOT2, LOW);
-    analogWrite(PWM,Wpulse);
-  }
-  if(sentido == 1){ //forWARDS
-    digitalWrite(MOT1, LOW);
-    digitalWrite(MOT2, HIGH);
-    analogWrite(PWM,Wpulse);     
-  }
-}
-
-void encoder(void){ 
-  //Serial.println(ant);
-  ant=act;                            // Saved act (current read) in ant (last read)
-  act = digitalRead(ENC1)<<1|digitalRead(ENC2);
-  if(ant==0 && act==1)        contador++;  // Increase the counter for forward movement
-  else if(ant==1  && act==3)  contador++;
-  else if(ant==3  && act==2)  contador++;
-  else if(ant==2  && act==0)  contador++;
-  else contador--;                         // Reduce the counter for backward movement
-
-  // Enter the counter as input for PID algorith
-  Input1=contador;
-}
 //////////////////
 ////// Loop //////
 //////////////////
 
 void loop() {
   if (DEBUG) {
+
     if (Serial.available() > 0) {
+      
       setState((States) Serial.parseInt());
       while(Serial.available() > 0) Serial.read();
     }
@@ -226,8 +205,8 @@ void loop() {
   logger.update();
   knobs.update();
   calculateWaveform();
-  readEncoder(roboclaw, motorPosition);  // TODO handle invalid reading
-  readMotorCurrent(roboclaw, motorCurrent);
+//  readEncoder(roboclaw, motorPosition);  // TODO handle invalid reading
+//  readMotorCurrent(roboclaw, motorCurrent);
   pressureReader.read();
   handleErrors();
   alarm.update();
@@ -235,7 +214,7 @@ void loop() {
   offButton.update();
 
   if (offButton.wasHeld()) {
-    goToPositionByDur(roboclaw, BAG_CLEAR_POS, motorPosition, MAX_EX_DURATION);
+//    goToPositionByDur(roboclaw, BAG_CLEAR_POS, motorPosition, MAX_EX_DURATION);
     setState(OFF_STATE);
     alarm.allOff();
   }
@@ -245,7 +224,7 @@ void loop() {
 
     case DEBUG_STATE:
       // Stop motor
-      roboclaw.ForwardM1(ROBOCLAW_ADDR, 0);
+//     roboclaw.ForwardM1(ROBOCLAW_ADDR, 0);
       break;
 
     case OFF_STATE: 
@@ -262,7 +241,7 @@ void loop() {
         const float tNow = now();
         tPeriodActual = tNow - tCycleTimer;
         tCycleTimer = tNow;  // The cycle begins at the start of inspiration
-        goToPositionByDur(roboclaw, volume2ticks(knobs.volume()), motorPosition, tIn);
+//        goToPositionByDur(roboclaw, volume2ticks(knobs.volume()), motorPosition, tIn);
         cycleCount++;
       }
 
@@ -284,7 +263,7 @@ void loop() {
     case EX_STATE:
       if (enteringState) {
         enteringState = false;
-        goToPositionByDur(roboclaw, BAG_CLEAR_POS, motorPosition, tEx - (now() - tCycleTimer));
+//        goToPositionByDur(roboclaw, BAG_CLEAR_POS, motorPosition, tEx - (now() - tCycleTimer));
       }
 
       if (abs(motorPosition - BAG_CLEAR_POS) < BAG_CLEAR_TOL) {
@@ -326,7 +305,7 @@ void loop() {
     case PREHOME_STATE:
       if (enteringState) {
         enteringState = false;
-        roboclaw.BackwardM1(ROBOCLAW_ADDR, HOMING_VOLTS);
+//        roboclaw.BackwardM1(ROBOCLAW_ADDR, HOMING_VOLTS);
       }
 
       if (homeSwitchPressed()) {
@@ -337,13 +316,13 @@ void loop() {
     case HOMING_STATE:
       if (enteringState) {
         enteringState = false;
-        roboclaw.ForwardM1(ROBOCLAW_ADDR, HOMING_VOLTS);
+ //       roboclaw.ForwardM1(ROBOCLAW_ADDR, HOMING_VOLTS);
       }
       
       if (!homeSwitchPressed()) {
-        roboclaw.ForwardM1(ROBOCLAW_ADDR, 0);
+//        roboclaw.ForwardM1(ROBOCLAW_ADDR, 0);
         delay(HOMING_PAUSE * 1000);  // Wait for things to settle
-        roboclaw.SetEncM1(ROBOCLAW_ADDR, 0);  // Zero the encoder
+ //       roboclaw.SetEncM1(ROBOCLAW_ADDR, 0);  // Zero the encoder
         setState(IN_STATE);
       }
       break;
@@ -352,6 +331,7 @@ void loop() {
   // Add a delay if there's still time in the loop period
   tLoopBuffer = max(0, tLoopTimer + LOOP_PERIOD - now());
   delay(tLoopBuffer*1000.0);
+  timer.tick(); // tick the timer
 }
 
 
@@ -410,12 +390,12 @@ void handleErrors() {
   }
 
   // Check if maximum motor current was exceeded
-  if (motorCurrent >= MAX_MOTOR_CURRENT) {
-    setState(EX_STATE);
-    alarm.overCurrent(true);
-  } else {
-    alarm.overCurrent(false);
-  }
+//  if (motorCurrent >= MAX_MOTOR_CURRENT) {
+//    setState(EX_STATE);
+//    alarm.overCurrent(true);
+//  } else {
+//    alarm.overCurrent(false);
+//  }
 
   // Check if we've gotten stuck in EX_STATE (mechanical cycle didn't finsih)
   alarm.mechanicalFailure(state == EX_STATE && now() - tCycleTimer > tPeriod + MECHANICAL_TIMEOUT);
@@ -434,4 +414,105 @@ void setupLogger() {
   // logger.addVar("HighPresAlarm", &alarm.getHighPressure());
   // begin called after all variables added to include them all in the header
   logger.begin(&Serial, SD_SELECT);
+}
+
+
+
+//AutoPID
+
+bool pid_interupt(void *) {
+  myPID.run();  // Calculus for PID algorithm 
+  RunMotor(Output); // PWM order to DC driver
+  return true; // repeat? true
+}
+// Function for run the motor, backward, forward or stop
+void RunMotor(double Usignal){  
+  if (Setpoint-Input1==0){
+    shaftrev(ENC1,ENC2,PWM1,BACKWARD, 0);
+    //Serial.print("cero");
+  }else if(Usignal>=0){
+    shaftrev(ENC1,ENC2,PWM1,BACKWARD, Usignal);
+  }else{
+      shaftrev(ENC1,ENC2,PWM1,FORWARD, -1*Usignal);
+  }   
+}
+
+void shaftrev(int ENC1, int ENC2, int PWM, int sentido, int Wpulse){  
+  if(sentido == 0){ //backWARDS
+    digitalWrite(MOT1, HIGH);
+    digitalWrite(MOT2, LOW);
+    analogWrite(PWM,Wpulse);
+  }
+  if(sentido == 1){ //forWARDS
+    digitalWrite(MOT1, LOW);
+    digitalWrite(MOT2, HIGH);
+    analogWrite(PWM,Wpulse);     
+  }
+}
+
+// Encoder x4. Execute when interruption pin jumps.
+void encoder(void){ 
+  //Serial.println(ant);
+  ant=act;                            // Saved act (current read) in ant (last read)
+  act = digitalRead(ENC1)<<1|digitalRead(ENC2);
+  if(ant==0 && act==1)        contador++;  // Increase the counter for forward movement
+  else if(ant==1  && act==3)  contador++;
+  else if(ant==3  && act==2)  contador++;
+  else if(ant==2  && act==0)  contador++;
+  else contador--;                         // Reduce the counter for backward movement
+
+  // Enter the counter as input for PID algorith
+  Input1 = contador;
+}
+
+
+// Data catched from serial terminal
+void input_data(void){
+  if (Serial.available() > 0){           // Check if you have received any data through the serial terminal.
+  
+      cmd = 0;                            // clean CMD
+      cmd = Serial.read();                // "cmd" keep the recived byte
+      if (cmd > 31){
+      
+        flags = 0;                                           // Reboot the flag, that decide what have to be printed
+        if (cmd >  'Z') cmd -= 32;                           // Change to Uppercase 
+        if (cmd == 'W') { Setpoint += 5.0;     flags = 2; }  // For example is you put 'W' moves 5 steps forward. Relative movement
+        if (cmd == 'Q') { Setpoint -= 5.0;     flags = 2; }  // Here is 5 steps backward
+        if (cmd == 'S') { Setpoint += 400.0;   flags = 2; }  // The same with another values 
+        if (cmd == 'A') { Setpoint -= 400.0;   flags = 2; }
+        if (cmd == 'X') { Setpoint += 5000.0;  flags = 2; }
+        if (cmd == 'Z') { Setpoint -= 5000.0;  flags = 2; }
+        if (cmd == '2') { Setpoint += 12000.0; flags = 2; }
+        if (cmd == '1') { Setpoint -= 12000.0; flags = 2; }
+        if (cmd == '0') { Setpoint = 0.0;      flags = 2; }  // Ir a Inicio.
+        
+        // Decode for change the PID gains
+        switch(cmd)                                                     // for example, we put "P2.5 I0.5 D40" them the gains will take these values kp, ki y kd.
+        {                                                               // You can change every gain independently
+          case 'P': Kp  = Serial.parseFloat();        flags = 1; break; // Change the PID gains
+          case 'I': Ki  = Serial.parseFloat();        flags = 1; break;
+          case 'D': Kd  = Serial.parseFloat();        flags = 1; break;
+          case 'G': Setpoint   = -1*Serial.parseFloat(); flags = 2; break; // You can change the setpoint with absolute values Ex: G23000
+          case 'K':                                   flags = 3; break;
+        }       
+        imprimir(flags);
+      }
+    }
+}
+
+// Print date in serial terminal
+void imprimir(byte flag){ 
+
+  if ((flag == 1) || (flag == 3))
+  {
+    Serial.print("KP=");     Serial.print(Kp);
+    Serial.print(" KI=");    Serial.print(Ki);
+    Serial.print(" KD=");    Serial.print(Kd);
+    Serial.print(" Time=");  Serial.println(SAMPLE_TIME);
+  }
+  if ((flag == 2) || (flag == 3))
+  {
+    Serial.print("Position:");
+    Serial.println((long)Setpoint);
+  }
 }

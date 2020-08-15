@@ -49,7 +49,7 @@ enum States {
 const long SERIAL_BAUD_RATE = 115200;
 
 // Flags
-const bool DEBUG = false; // For controlling and displaying via serial
+const bool DEBUG = true; // For controlling and displaying via serial
 const bool ASSIST_CONTROL = false; // Enable assist control
 
 // Timing Settings
@@ -88,9 +88,12 @@ const int ENC1 = 18;
 const int ENC2 = 19;
 const int MOT1 = 30;
 const int MOT2 = 31;
+const int PWM1 = 2;
 const int SAMPLE_TIME = 10;
 const int OUTPUT_MIN_PID = 0;
 const int OUTPUT_MAX_PID = 255;
+const int BACKWARD = 0;
+const int FORWARD = 1;
 
 // Control knob mappings
 const int BPM_MIN = 10;
