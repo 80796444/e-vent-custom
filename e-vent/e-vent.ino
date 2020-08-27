@@ -71,9 +71,6 @@ float tStateTimer;
 //RoboClaw roboclaw(&Serial3, 10000);
 //int motorCurrent, 
 int motorPosition = 0;
-#define SAMPLE_TIME 10
-#define OUTPUT_MIN -150
-#define OUTPUT_MAX 150
 #define RANGE 5
 bool test;
 double Setpoint; 
@@ -89,7 +86,10 @@ double Kp=2, Ki=0.1, Kd=0.01;
 byte  ant =  0;    
 byte  act =  0;
 
-AutoPID myPID(&Input1, &Setpoint, &Output, OUTPUT_MIN, OUTPUT_MAX, Kp, Ki, Kd, RANGE, &percentageError);
+byte Home = false;
+byte Close = false;
+
+AutoPID myPID(&Input1, &Setpoint, &Output, OUTPUT_MIN_PID, OUTPUT_MAX_PID, Kp, Ki, Kd, RANGE, &percentageError);
 
 
 // LCD Screen
@@ -107,7 +107,7 @@ buttons::PressHoldButton offButton(OFF_PIN, 2000);
 buttons::DebouncedButton confirmButton(CONFIRM_PIN);
 
 // Logger
-logging::Logger logger(true/*Serial*/, false/*SD*/, false/*labels*/, ",\t"/*delim*/);
+logging::Logger logger(false/*Serial*/, false/*SD*/, false/*labels*/, ",\t"/*delim*/);
 
 // Knobs
 struct Knobs {
@@ -150,7 +150,7 @@ void setupLogger();
 void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
   while(!Serial);
-
+  pinMode(LED_BUILTIN, OUTPUT);
   if (DEBUG) {
     setState(DEBUG_STATE);
   } else {
@@ -176,10 +176,11 @@ void setup() {
 //  roboclaw.SetM1PositionPID(ROBOCLAW_ADDR, PKP, PKI, PKD, KI_MAX, DEADZONE, MIN_POS, MAX_POS);
 //  roboclaw.SetEncM1(ROBOCLAW_ADDR, 0);  // Zero the encoder
 
-  Setpoint = 9000;
+  Setpoint = 900;
   myPID.setBangBang(0);
   myPID.setTimeStep(SAMPLE_TIME);
   pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
   attachInterrupt(digitalPinToInterrupt(ENC1), encoder, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENC2), encoder, CHANGE);
   int counterlog = 0;
@@ -191,10 +192,39 @@ void setup() {
 //////////////////
 
 void loop() {
-  if (DEBUG) {
 
+  if (percentageError == 0 && !Home && !Close) {
+
+    digitalWrite(LED_BUILTIN, HIGH);
+    Home = true;
+    myPID.stop();
+    delay(1000);
+    Setpoint = CUSTOM_CLOSE;
+    Serial.println("Home");
+  }
+
+  if (percentageError == 0 && Home && !Close) {
+    digitalWrite(LED_BUILTIN, LOW);
+    Home = false;
+    Close = true;
+    delay(1000);
+    Setpoint = CUSTOM_HOME - CUSTOM_CLOSE;
+    Serial.println("close");
+  }
+
+  if (percentageError == 0 && !Home && Close) {
+    digitalWrite(LED_BUILTIN, HIGH);
+    Home = true;
+    Close = false;
+    delay(1000);
+    Setpoint = CUSTOM_CLOSE;
+    Serial.println("home again");
+  }
+  
+  
+  
+  if (DEBUG) {
     if (Serial.available() > 0) {
-      
       setState((States) Serial.parseInt());
       while(Serial.available() > 0) Serial.read();
     }
