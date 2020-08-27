@@ -1,12 +1,13 @@
 #include "AutoPID.h"
 
+
+
 AutoPID::AutoPID(double *input, double *setpoint, double *output, double outputMin, double outputMax,
-                 double Kp, double Ki, double Kd, double range, double *percentageError) {
+                 double Kp, double Ki, double Kd, double range) {
   _input = input;
   _setpoint = setpoint;
   _output = output;
   _outputMin = outputMin;
-  _percentageError = percentageError;
   _outputMax = outputMax;
   _range = range > 100 ? 100 : range;
   setGains(Kp, Ki, Kd);
@@ -14,6 +15,13 @@ AutoPID::AutoPID(double *input, double *setpoint, double *output, double outputM
   
 
 }//AutoPID::AutoPID
+
+StatusPid AutoPID::state_pid() {
+  current_status.SetPoint = *setpoint;
+  current_status.Finish = *input >= *setpoint;
+  return current_status;
+}
+
 
 void AutoPID::setGains(double Kp, double Ki, double Kd) {
   _Kp = Kp;
@@ -71,8 +79,8 @@ void AutoPID::run() {
       //*_output = _outputMin + (constrain(PID, 0, 1) * (_outputMax - _outputMin));
       *_output = constrain(PID, _outputMin, _outputMax);
  
-      *_percentageError = (1 - abs(*_input/ *_setpoint)) * 100;
-      if (_percentageError < _range) {
+      double percentageError = (1 - abs(*_input/ *_setpoint)) * 100;
+      if (percentageError < _range) {
         _previousError = 0;
       }  
     }

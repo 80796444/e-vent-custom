@@ -74,7 +74,7 @@ int motorPosition = 0;
 #define RANGE 5
 bool test;
 double Setpoint; 
-double Input1;
+double Input1 = 0;
 double Output;
 int counterlog;
 volatile long contador =  0; 
@@ -89,7 +89,7 @@ byte  act =  0;
 byte Home = false;
 byte Close = false;
 
-AutoPID myPID(&Input1, &Setpoint, &Output, OUTPUT_MIN_PID, OUTPUT_MAX_PID, Kp, Ki, Kd, RANGE, &percentageError);
+AutoPID myPID(&Input1, &Setpoint, &Output, OUTPUT_MIN_PID, OUTPUT_MAX_PID, Kp, Ki, Kd, RANGE);
 
 
 // LCD Screen
@@ -176,7 +176,7 @@ void setup() {
 //  roboclaw.SetM1PositionPID(ROBOCLAW_ADDR, PKP, PKI, PKD, KI_MAX, DEADZONE, MIN_POS, MAX_POS);
 //  roboclaw.SetEncM1(ROBOCLAW_ADDR, 0);  // Zero the encoder
 
-  Setpoint = 900;
+  Setpoint = 330;
   myPID.setBangBang(0);
   myPID.setTimeStep(SAMPLE_TIME);
   pinMode(LED_BUILTIN, OUTPUT);
@@ -193,36 +193,39 @@ void setup() {
 
 void loop() {
 
-  if (percentageError == 0 && !Home && !Close) {
 
-    digitalWrite(LED_BUILTIN, HIGH);
-    Home = true;
-    myPID.stop();
-    delay(1000);
-    Setpoint = CUSTOM_CLOSE;
-    Serial.println("Home");
-  }
-
-  if (percentageError == 0 && Home && !Close) {
-    digitalWrite(LED_BUILTIN, LOW);
-    Home = false;
-    Close = true;
-    delay(1000);
-    Setpoint = CUSTOM_HOME - CUSTOM_CLOSE;
-    Serial.println("close");
-  }
-
-  if (percentageError == 0 && !Home && Close) {
-    digitalWrite(LED_BUILTIN, HIGH);
-    Home = true;
-    Close = false;
-    delay(1000);
-    Setpoint = CUSTOM_CLOSE;
-    Serial.println("home again");
-  }
+//  if (percentageError == 0 && !Home && !Close) {
+//
+//    digitalWrite(LED_BUILTIN, HIGH);
+//    Home = true;
+//    myPID.stop();
+//    delay(1000);
+//    Setpoint = CUSTOM_CLOSE;
+//    Serial.println("Home");
+//  }
+//
+//  if (percentageError == 0 && Home && !Close) {
+//    digitalWrite(LED_BUILTIN, LOW);
+//    Home = false;
+//    Close = true;
+//    delay(1000);
+//    Setpoint = CUSTOM_HOME - CUSTOM_CLOSE;
+//    Serial.println("close");
+//  }
+//
+//  if (percentageError == 0 && !Home && Close) {
+//    digitalWrite(LED_BUILTIN, HIGH);
+//    Home = true;
+//    Close = false;
+//    delay(1000);
+//    Setpoint = CUSTOM_CLOSE;
+//    Serial.println("home again");
+//  }
   
-  
-  
+    Serial.print("PWM  :");Serial.print(Output); 
+    Serial.print(" |  contador  :");Serial.print(contador);
+    Serial.print(" |  Setpoint  :");Serial.println(Setpoint);
+    timer.tick(); // tick the timer
   if (DEBUG) {
     if (Serial.available() > 0) {
       setState((States) Serial.parseInt());
@@ -361,7 +364,7 @@ void loop() {
   // Add a delay if there's still time in the loop period
   tLoopBuffer = max(0, tLoopTimer + LOOP_PERIOD - now());
   delay(tLoopBuffer*1000.0);
-  timer.tick(); // tick the timer
+
 }
 
 
@@ -463,7 +466,7 @@ void RunMotor(double Usignal){
   }else if(Usignal>=0){
     shaftrev(ENC1,ENC2,PWM1,BACKWARD, Usignal);
   }else{
-      shaftrev(ENC1,ENC2,PWM1,FORWARD, -1*Usignal);
+    shaftrev(ENC1,ENC2,PWM1,FORWARD, -1*Usignal);
   }   
 }
 
@@ -492,7 +495,7 @@ void encoder(void){
   else contador--;                         // Reduce the counter for backward movement
 
   // Enter the counter as input for PID algorith
-  Input1 = contador;
+  Input1 = contador;;
 }
 
 

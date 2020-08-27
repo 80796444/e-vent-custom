@@ -7,7 +7,7 @@ class AutoPID {
   public:
     // Constructor - takes pointer inputs for control variales, so they are updated automatically
     AutoPID(double *input, double *setpoint, double *output, double outputMin, double outputMax,
-            double Kp, double Ki, double Kd, double range, double *percentageError);
+            double Kp, double Ki, double Kd, double range);
     // Allows manual adjustment of gains
     void setGains(double Kp, double Ki, double Kd);
     // Sets bang-bang control ranges, separate upper and lower offsets, zero for off
@@ -31,6 +31,11 @@ class AutoPID {
     double getIntegral();
     void setIntegral(double integral);
 
+    struct StatusPid {
+      int SetPoint; 
+      bool Finish;     
+    };
+
   private:
     double _Kp, _Ki, _Kd;
     double _integral, _previousError, *_percentageError;
@@ -40,6 +45,8 @@ class AutoPID {
     unsigned long _timeStep, _lastStep;
     bool _stopped;
     int _range;
+    StatusPid current_status;
+
 };//class AutoPID
 
 
